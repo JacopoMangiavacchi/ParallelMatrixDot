@@ -80,12 +80,12 @@ namespace ConsoleApp1
                 this.Sub(fromRow, half, fromCol, Cols).Multiply(tasks, op, result.Sub(result.fromRow, half, result.fromCol, result.Cols));
                 this.Sub(fromRow + half, Rows - half, fromCol, Cols).Multiply(tasks, op, result.Sub(result.fromRow + half, result.Rows - half, result.fromCol, result.Cols));
             }
-            //else if (Cols > 1)
-            //{
-            //    var half = Cols / 2;
-            //    this.Sub(fromRow, Rows, fromCol, half).Multiply(op.Sub(op.fromRow, half, op.fromCol, op.Cols), result.Sub(result.fromRow, result.Rows, result.fromCol, half));
-            //    this.Sub(fromRow, Rows, fromCol + half, Cols - half).Multiply(op.Sub(op.fromRow + half, op.Rows - half, op.fromCol, op.Cols), result.Sub(result.fromRow, result.Rows, result.fromCol + half, result.Cols - half));
-            //}
+            else if (op.Cols > 1)
+            {
+                var half = op.Cols / 2;
+                this.Multiply(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol, half), result.Sub(result.fromRow, result.Rows, result.fromCol, half));
+                this.Multiply(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol + half, op.Cols - half), result.Sub(result.fromRow, result.Rows, result.fromCol + half, result.Cols - half));
+            }
             else {
                 tasks.Add(Task.Factory.StartNew(() => {
                     for (int row = 0; row < this.Rows; row++)
