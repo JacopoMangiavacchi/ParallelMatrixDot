@@ -16,90 +16,6 @@ namespace ConsoleApp1
         SubMatrix Sub(int fromRow, int rows, int fromCol, int cols);
     }
 
-    public class SubMatrix : IMatrix
-    {
-        private readonly Matrix matrix;
-        private readonly int fromRow;
-        private readonly int fromCol;
-
-        public int Rows { get; }
-        public int Cols { get; }
-
-        public int this[int r, int c] {
-            get
-            {
-                return matrix.Buffer[((r + fromRow) * matrix.Cols) + c + fromCol];
-            }
-            set
-            {
-                matrix.Buffer[((r + fromRow) * matrix.Cols) + c + fromCol] = value;
-            }
-        }
-
-        public string Description { 
-            get
-            {
-                var descr = new StringBuilder();
-
-                for (int r = fromRow; r < fromRow + Rows; r++)
-                {
-                    var row = new StringBuilder();
-                    for (int c = fromCol; c < fromCol + Cols; c++)
-                    {
-                        row.Append($"{matrix.Buffer[r * matrix.Cols + c]} ");
-                    }
-
-                    descr.Append($"{row} \r\n");
-                }
-
-                return descr.ToString();
-            }
-        }
-
-
-        public SubMatrix(Matrix matrix, int fromRow, int rows, int fromCol, int cols)
-        {
-            this.fromRow = fromRow;
-            this.fromCol = fromCol;
-            this.Rows = rows;
-            this.Cols = cols;
-            this.matrix = matrix;
-        }
-
-        public SubMatrix Sub(int fromRow, int rows, int fromCol, int cols)
-        {
-            //TODO GUARD from & to in the range
-            return new SubMatrix(this.matrix, fromRow, rows, fromCol, cols);
-        }
-
-        internal void Multiply(List<Task> tasks, SubMatrix op, SubMatrix result)
-        {
-            if (Rows > 1)
-            {
-                var half = Rows / 2;
-                this.Sub(fromRow, half, fromCol, Cols).Multiply(tasks, op, result.Sub(result.fromRow, half, result.fromCol, result.Cols));
-                this.Sub(fromRow + half, Rows - half, fromCol, Cols).Multiply(tasks, op, result.Sub(result.fromRow + half, result.Rows - half, result.fromCol, result.Cols));
-            }
-            else if (op.Cols > 1)
-            {
-                var half = op.Cols / 2;
-                this.Multiply(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol, half), result.Sub(result.fromRow, result.Rows, result.fromCol, half));
-                this.Multiply(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol + half, op.Cols - half), result.Sub(result.fromRow, result.Rows, result.fromCol + half, result.Cols - half));
-            }
-            else {
-                tasks.Add(Task.Factory.StartNew(() => {
-                    var t = 0;
-                    for (int i = 0; i < Cols; i++)
-                    {
-                        t += this[0, i] * op[i, 0];
-                    }
-                    result[0, 0] = t;
-                }));
-            }
-        }
-    }
-
-
     public class Matrix : IMatrix
     {
         internal readonly int[] Buffer;
@@ -171,6 +87,93 @@ namespace ConsoleApp1
             return result;
         }
     }
+
+    public class SubMatrix : IMatrix
+    {
+        private readonly Matrix matrix;
+        private readonly int fromRow;
+        private readonly int fromCol;
+
+        public int Rows { get; }
+        public int Cols { get; }
+
+        public int this[int r, int c]
+        {
+            get
+            {
+                return matrix.Buffer[((r + fromRow) * matrix.Cols) + c + fromCol];
+            }
+            set
+            {
+                matrix.Buffer[((r + fromRow) * matrix.Cols) + c + fromCol] = value;
+            }
+        }
+
+        public string Description
+        {
+            get
+            {
+                var descr = new StringBuilder();
+
+                for (int r = fromRow; r < fromRow + Rows; r++)
+                {
+                    var row = new StringBuilder();
+                    for (int c = fromCol; c < fromCol + Cols; c++)
+                    {
+                        row.Append($"{matrix.Buffer[r * matrix.Cols + c]} ");
+                    }
+
+                    descr.Append($"{row} \r\n");
+                }
+
+                return descr.ToString();
+            }
+        }
+
+
+        public SubMatrix(Matrix matrix, int fromRow, int rows, int fromCol, int cols)
+        {
+            this.fromRow = fromRow;
+            this.fromCol = fromCol;
+            this.Rows = rows;
+            this.Cols = cols;
+            this.matrix = matrix;
+        }
+
+        public SubMatrix Sub(int fromRow, int rows, int fromCol, int cols)
+        {
+            //TODO GUARD from & to in the range
+            return new SubMatrix(this.matrix, fromRow, rows, fromCol, cols);
+        }
+
+        internal void Multiply(List<Task> tasks, SubMatrix op, SubMatrix result)
+        {
+            if (Rows > 1)
+            {
+                var half = Rows / 2;
+                this.Sub(fromRow, half, fromCol, Cols).Multiply(tasks, op, result.Sub(result.fromRow, half, result.fromCol, result.Cols));
+                this.Sub(fromRow + half, Rows - half, fromCol, Cols).Multiply(tasks, op, result.Sub(result.fromRow + half, result.Rows - half, result.fromCol, result.Cols));
+            }
+            else if (op.Cols > 1)
+            {
+                var half = op.Cols / 2;
+                this.Multiply(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol, half), result.Sub(result.fromRow, result.Rows, result.fromCol, half));
+                this.Multiply(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol + half, op.Cols - half), result.Sub(result.fromRow, result.Rows, result.fromCol + half, result.Cols - half));
+            }
+            else
+            {
+                tasks.Add(Task.Factory.StartNew(() => {
+                    var t = 0;
+                    for (int i = 0; i < Cols; i++)
+                    {
+                        t += this[0, i] * op[i, 0];
+                    }
+                    result[0, 0] = t;
+                }));
+            }
+        }
+    }
+
 
     //// NO SUPPORT FOR INumeric or similar in C# Generic
     //// https://stackoverflow.com/questions/32664/is-there-a-constraint-that-restricts-my-generic-method-to-numeric-types
