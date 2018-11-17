@@ -11,23 +11,26 @@ namespace ConsoleApp1
 
             //var m = new Matrix<int>(4, 2);
             //var m1 = new Matrix(4, 2);
-            var m1 = new Matrix(7, 5);
+            //var m2 = new Matrix(2, 3);
+            var m1 = new Matrix(47, 23);
+            var m2 = new Matrix(23, 32);
+
             m1.Randomize(() => random.Next(1, 9));
+            m2.Randomize(() => random.Next(1, 9));
+
             Console.WriteLine(m1.Description);
 
             Console.WriteLine("=======");
-            //var m2 = new Matrix(2, 3);
-            var m2 = new Matrix(5, 6);
-            m2.Randomize(() => random.Next(1, 9));
             Console.WriteLine(m2.Description);
 
             Console.WriteLine("=======");
-            var m3 = m1.Multiply(m2);
-            Console.WriteLine(m3.Description);
+            Console.WriteLine(m1.MultiplyIterative(m2).Description);
 
             Console.WriteLine("=======");
-            var m4 = m3.Sub(1, 2, 1, 2);
-            Console.WriteLine(m4.Description);
+            Console.WriteLine(m1.MultiplyRecursiveBox(m2).Description);
+
+            Console.WriteLine("=======");
+            Console.WriteLine(m1.MultiplyRecursiveVector(m2).Description);
         }
     }
 }
