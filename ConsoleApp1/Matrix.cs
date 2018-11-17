@@ -88,22 +88,16 @@ namespace ConsoleApp1
             }
             else {
                 tasks.Add(Task.Factory.StartNew(() => {
-                    for (int row = 0; row < this.Rows; row++)
+                    var t = 0;
+                    for (int i = 0; i < Cols; i++)
                     {
-                        for (int col = 0; col < op.Cols; col++)
-                        {
-                            result[row, col] = 0;
-                            for (int col2 = 0; col2 < this.Cols; col2++)
-                            {
-                                result[row, col] += this[row, col2] * op[col2, col];
-                            }
-                        }
+                        t += this[0, i] * op[i, 0];
                     }
+                    result[0, 0] = t;
                 }));
             }
         }
     }
-
 
 
     public class Matrix : IMatrix
