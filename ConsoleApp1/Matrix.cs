@@ -67,8 +67,10 @@ namespace ConsoleApp1
             }
         }
 
-        public Matrix Multiply(Matrix op)
+        public Matrix MultiplyIterative(Matrix op)
         {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
             if (this.Cols != op.Rows)
             {
                 throw new System.Exception("Incompatible Matixes");
@@ -78,11 +80,77 @@ namespace ConsoleApp1
 
             var tasks = new List<Task>();
 
-            this.Sub(0, Rows, 0, Cols).Multiply(tasks,
-                                                op.Sub(0, op.Rows, 0, op.Cols), 
+            for (int row = 0; row < Rows; row++)
+            {
+                for (int col = 0; col < op.Cols; col++)
+                {
+                    int c = col;
+                    int r = row;
+                    tasks.Add(Task.Factory.StartNew(() => {
+                        var t = 0;
+                        for (int i = 0; i < Cols; i++)
+                        {
+                            t += this[r, i] * op[i, c];
+                        }
+                        result[r, c] = t;
+                    }));
+                }
+            }
+
+            Task.WaitAll(tasks.ToArray());
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+            Console.WriteLine($"MultiplyIterative tasks: {tasks.Count} time: {elapsedMs}");
+
+            return result;
+        }
+
+        public Matrix MultiplyRecursiveVector(Matrix op)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
+            if (this.Cols != op.Rows)
+            {
+                throw new System.Exception("Incompatible Matixes");
+            }
+
+            var result = new Matrix(this.Rows, op.Cols);
+
+            var tasks = new List<Task>();
+
+            this.Sub(0, Rows, 0, Cols).MultiplyRecursiveVector(tasks,
+                                                op.Sub(0, op.Rows, 0, op.Cols),
                                                 result.Sub(0, this.Rows, 0, op.Cols));
 
             Task.WaitAll(tasks.ToArray());
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+            Console.WriteLine($"MultiplyRecursiveVector tasks: {tasks.Count} time: {elapsedMs}");
+
+            return result;
+        }
+
+        public Matrix MultiplyRecursiveBox(Matrix op)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
+            if (this.Cols != op.Rows)
+            {
+                throw new System.Exception("Incompatible Matixes");
+            }
+
+            var result = new Matrix(this.Rows, op.Cols);
+
+            var tasks = new List<Task>();
+
+            this.Sub(0, Rows, 0, Cols).MultiplyRecursiveBox(tasks,
+                                                op.Sub(0, op.Rows, 0, op.Cols),
+                                                result.Sub(0, this.Rows, 0, op.Cols));
+
+            Task.WaitAll(tasks.ToArray());
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+            Console.WriteLine($"MultiplyRecursiveBox tasks: {tasks.Count} time: {elapsedMs}");
 
             return result;
         }
@@ -146,19 +214,19 @@ namespace ConsoleApp1
             return new SubMatrix(this.matrix, fromRow, rows, fromCol, cols);
         }
 
-        internal void Multiply(List<Task> tasks, SubMatrix op, SubMatrix result)
+        internal void MultiplyRecursiveVector(List<Task> tasks, SubMatrix op, SubMatrix result)
         {
             if (Rows > 1)
             {
                 var half = Rows / 2;
-                this.Sub(fromRow, half, fromCol, Cols).Multiply(tasks, op, result.Sub(result.fromRow, half, result.fromCol, result.Cols));
-                this.Sub(fromRow + half, Rows - half, fromCol, Cols).Multiply(tasks, op, result.Sub(result.fromRow + half, result.Rows - half, result.fromCol, result.Cols));
+                this.Sub(fromRow, half, fromCol, Cols).MultiplyRecursiveVector(tasks, op, result.Sub(result.fromRow, half, result.fromCol, result.Cols));
+                this.Sub(fromRow + half, Rows - half, fromCol, Cols).MultiplyRecursiveVector(tasks, op, result.Sub(result.fromRow + half, result.Rows - half, result.fromCol, result.Cols));
             }
             else if (op.Cols > 1)
             {
                 var half = op.Cols / 2;
-                this.Multiply(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol, half), result.Sub(result.fromRow, result.Rows, result.fromCol, half));
-                this.Multiply(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol + half, op.Cols - half), result.Sub(result.fromRow, result.Rows, result.fromCol + half, result.Cols - half));
+                this.MultiplyRecursiveVector(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol, half), result.Sub(result.fromRow, result.Rows, result.fromCol, half));
+                this.MultiplyRecursiveVector(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol + half, op.Cols - half), result.Sub(result.fromRow, result.Rows, result.fromCol + half, result.Cols - half));
             }
             else
             {
@@ -172,6 +240,39 @@ namespace ConsoleApp1
                 }));
             }
         }
+
+        internal void MultiplyRecursiveBox(List<Task> tasks, SubMatrix op, SubMatrix result)
+        {
+            if (Rows > 2)
+            {
+                var half = Rows / 2;
+                this.Sub(fromRow, half, fromCol, Cols).MultiplyRecursiveBox(tasks, op, result.Sub(result.fromRow, half, result.fromCol, result.Cols));
+                this.Sub(fromRow + half, Rows - half, fromCol, Cols).MultiplyRecursiveBox(tasks, op, result.Sub(result.fromRow + half, result.Rows - half, result.fromCol, result.Cols));
+            }
+            else if (op.Cols > 2)
+            {
+                var half = op.Cols / 2;
+                this.MultiplyRecursiveBox(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol, half), result.Sub(result.fromRow, result.Rows, result.fromCol, half));
+                this.MultiplyRecursiveBox(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol + half, op.Cols - half), result.Sub(result.fromRow, result.Rows, result.fromCol + half, result.Cols - half));
+            }
+            else
+            {
+                tasks.Add(Task.Factory.StartNew(() => {
+                    for (int row = 0; row < this.Rows; row++)
+                    {
+                        for (int col = 0; col < op.Cols; col++)
+                        {
+                            result[row, col] = 0;
+                            for (int col2 = 0; col2 < this.Cols; col2++)
+                            {
+                                result[row, col] += this[row, col2] * op[col2, col];
+                            }
+                        }
+                    }
+                }));
+            }
+        }
+
     }
 
 
