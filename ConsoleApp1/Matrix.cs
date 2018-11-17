@@ -1,6 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ConsoleApp1
 {
@@ -9,7 +11,9 @@ namespace ConsoleApp1
         int Rows { get; }
         int Cols { get; }
         int this[int r, int c] { get; set; }
-        string Description();
+        string Description { get; }
+
+        SubMatrix Sub(int fromRow, int rows, int fromCol, int cols);
     }
 
     public class SubMatrix : IMatrix
@@ -32,6 +36,27 @@ namespace ConsoleApp1
             }
         }
 
+        public string Description { 
+            get
+            {
+                var descr = new StringBuilder();
+
+                for (int r = fromRow; r < fromRow + Rows; r++)
+                {
+                    var row = new StringBuilder();
+                    for (int c = fromCol; c < fromCol + Cols; c++)
+                    {
+                        row.Append($"{matrix.Buffer[r * matrix.Cols + c]} ");
+                    }
+
+                    descr.Append($"{row} \r\n");
+                }
+
+                return descr.ToString();
+            }
+        }
+
+
         public SubMatrix(Matrix matrix, int fromRow, int rows, int fromCol, int cols)
         {
             this.fromRow = fromRow;
@@ -41,36 +66,40 @@ namespace ConsoleApp1
             this.matrix = matrix;
         }
 
-        public string Description()
+        public SubMatrix Sub(int fromRow, int rows, int fromCol, int cols)
         {
-            var descr = new StringBuilder();
-
-            for (int r = fromRow; r < fromRow+Rows; r++)
-            {
-                var row = new StringBuilder();
-                for (int c = fromCol; c < fromCol+Cols; c++)
-                {
-                    row.Append($"{matrix.Buffer[r * matrix.Cols + c]} ");
-                }
-
-                descr.Append($"{row} \r\n");
-            }
-
-            return descr.ToString();
+            //TODO GUARD from & to in the range
+            return new SubMatrix(this.matrix, fromRow, rows, fromCol, cols);
         }
 
-        public void Multiply(SubMatrix op, SubMatrix result)
+        internal void Multiply(List<Task> tasks, SubMatrix op, SubMatrix result)
         {
-            for (int row = 0; row < this.Rows; row++)
+            if (Rows > 1)
             {
-                for (int col = 0; col < op.Cols; col++)
-                {
-                    result[row, col] = 0;
-                    for (int col2 = 0; col2 < this.Cols; col2++)
+                var half = Rows / 2;
+                this.Sub(fromRow, half, fromCol, Cols).Multiply(tasks, op, result.Sub(result.fromRow, half, result.fromCol, result.Cols));
+                this.Sub(fromRow + half, Rows - half, fromCol, Cols).Multiply(tasks, op, result.Sub(result.fromRow + half, result.Rows - half, result.fromCol, result.Cols));
+            }
+            //else if (Cols > 1)
+            //{
+            //    var half = Cols / 2;
+            //    this.Sub(fromRow, Rows, fromCol, half).Multiply(op.Sub(op.fromRow, half, op.fromCol, op.Cols), result.Sub(result.fromRow, result.Rows, result.fromCol, half));
+            //    this.Sub(fromRow, Rows, fromCol + half, Cols - half).Multiply(op.Sub(op.fromRow + half, op.Rows - half, op.fromCol, op.Cols), result.Sub(result.fromRow, result.Rows, result.fromCol + half, result.Cols - half));
+            //}
+            else {
+                tasks.Add(Task.Factory.StartNew(() => {
+                    for (int row = 0; row < this.Rows; row++)
                     {
-                        result[row, col] += this[row, col2] * op[col2, col];
+                        for (int col = 0; col < op.Cols; col++)
+                        {
+                            result[row, col] = 0;
+                            for (int col2 = 0; col2 < this.Cols; col2++)
+                            {
+                                result[row, col] += this[row, col2] * op[col2, col];
+                            }
+                        }
                     }
-                }
+                }));
             }
         }
     }
@@ -103,7 +132,15 @@ namespace ConsoleApp1
             }
         }
 
-        public SubMatrix SubMatrix(int fromRow, int rows, int fromCol, int cols)
+        public string Description
+        {
+            get
+            {
+                return this.Sub(0, Rows, 0, Cols).Description;
+            }
+        }
+
+        public SubMatrix Sub(int fromRow, int rows, int fromCol, int cols)
         {
             //TODO GUARD from & to in the range
             return new SubMatrix(this, fromRow, rows, fromCol, cols);
@@ -120,11 +157,6 @@ namespace ConsoleApp1
             }
         }
 
-        public string Description()
-        {
-            return new SubMatrix(this, 0, Rows, 0, Cols).Description();
-        }
-
         public Matrix Multiply(Matrix op)
         {
             if (this.Cols != op.Rows)
@@ -133,9 +165,14 @@ namespace ConsoleApp1
             }
 
             var result = new Matrix(this.Rows, op.Cols);
-            var subResult = result.SubMatrix(0, this.Rows, 0, op.Cols);
 
-            new SubMatrix(this, 0, Rows, 0, Cols).Multiply(op.SubMatrix(0, op.Rows, 0, op.Cols), subResult);
+            var tasks = new List<Task>();
+
+            this.Sub(0, Rows, 0, Cols).Multiply(tasks,
+                                                op.Sub(0, op.Rows, 0, op.Cols), 
+                                                result.Sub(0, this.Rows, 0, op.Cols));
+
+            Task.WaitAll(tasks.ToArray());
 
             return result;
         }
