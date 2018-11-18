@@ -6,39 +6,64 @@ using System.Threading.Tasks;
 
 namespace ConsoleApp1
 {
-    public interface IMatrix
+    public interface IMatrix<T>
     {
         int Rows { get; }
         int Cols { get; }
-        int this[int r, int c] { get; set; }
+        T this[int r, int c] { get; set; }
         string Description { get; }
 
-        SubMatrix Sub(int fromRow, int rows, int fromCol, int cols);
+        SubMatrix<T> Sub(int fromRow, int rows, int fromCol, int cols);
     }
 
-    public class Matrix : IMatrix
+    /// <summary>
+    /// Need to pass Randomizer, Multiplier, Adder and Zero lambda to constuctor 
+    /// as there is NO SUPPORT FOR INumeric or similar in C# Generic
+    /// https://stackoverflow.com/questions/32664/is-there-a-constraint-that-restricts-my-generic-method-to-numeric-types
+    /// like in C++ https://stackoverflow.com/questions/44848011/c-limit-template-type-to-numbers or other languages
+    ///  i.e.   public class Matrix<T>
+    ///           where T : INumeric<T> ????  ..... like  IComparable<T>, IEquatable<T>
+    /// </summary>
+    public class Matrix<T> : IMatrix<T>
     {
-        internal readonly int[] Buffer;
+        internal readonly T[] buffer;
+        internal readonly Func<T, T, T> multiplier;
+        internal readonly Func<T, T, T> adder;
+        internal readonly T Zero;
 
         public int Rows { get; }
         public int Cols { get; }
 
-        public Matrix(int rows, int cols)
+        public Matrix(int rows, int cols, Func<T, T, T> multiplier, Func<T, T, T> adder, T zero, Func<T> randomizer = null)
         {
-            this.Rows = rows;
-            this.Cols = cols;
-            this.Buffer = new int[rows * cols];
+            Rows = rows;
+            Cols = cols;
+            buffer = new T[rows * cols];
+            this.multiplier = multiplier;
+            this.adder = adder;
+            Zero = zero;
+
+            if (randomizer != null)
+            {
+                for (int r = 0; r < Rows; r++)
+                {
+                    for (int c = 0; c < Cols; c++)
+                    {
+                        buffer[r * Cols + c] = randomizer();
+                    }
+                }
+            }
         }
 
-        public int this[int r, int c]
+        public T this[int r, int c]
         {
             get
             {
-                return Buffer[r * Cols + c];
+                return buffer[r * Cols + c];
             }
             set
             {
-                Buffer[r * Cols + c] = value;
+                buffer[r * Cols + c] = value;
             }
         }
 
@@ -46,37 +71,26 @@ namespace ConsoleApp1
         {
             get
             {
-                return this.Sub(0, Rows, 0, Cols).Description;
+                return Sub(0, Rows, 0, Cols).Description;
             }
         }
 
-        public SubMatrix Sub(int fromRow, int rows, int fromCol, int cols)
+        public SubMatrix<T> Sub(int fromRow, int rows, int fromCol, int cols)
         {
             //TODO GUARD from & to in the range
-            return new SubMatrix(this, fromRow, rows, fromCol, cols);
+            return new SubMatrix<T>(this, fromRow, rows, fromCol, cols);
         }
 
-        public void Randomize(Func<int> randomizer)
-        {
-            for (int r = 0; r < Rows; r++)
-            {
-                for (int c = 0; c < Cols; c++)
-                {
-                    Buffer[r * Cols + c] = randomizer();
-                }
-            }
-        }
-
-        public Matrix MultiplyIterative(Matrix op)
+        public Matrix<T> MultiplyIterative(Matrix<T> op)
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
-            if (this.Cols != op.Rows)
+            if (Cols != op.Rows)
             {
                 throw new System.Exception("Incompatible Matixes");
             }
 
-            var result = new Matrix(this.Rows, op.Cols);
+            var result = new Matrix<T>(Rows, op.Cols, multiplier, adder, Zero);
 
             var tasks = new List<Task>();
 
@@ -87,10 +101,10 @@ namespace ConsoleApp1
                     int c = col;
                     int r = row;
                     tasks.Add(Task.Factory.StartNew(() => {
-                        var t = 0;
+                        T t = Zero;
                         for (int i = 0; i < Cols; i++)
                         {
-                            t += this[r, i] * op[i, c];
+                            t = adder(t, multiplier(this[r, i], op[i, c])); //t += this[r, i] * op[i, c];
                         }
                         result[r, c] = t;
                     }));
@@ -105,22 +119,22 @@ namespace ConsoleApp1
             return result;
         }
 
-        public Matrix MultiplyRecursiveVector(Matrix op)
+        public Matrix<T> MultiplyRecursiveVector(Matrix<T> op)
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
-            if (this.Cols != op.Rows)
+            if (Cols != op.Rows)
             {
                 throw new System.Exception("Incompatible Matixes");
             }
 
-            var result = new Matrix(this.Rows, op.Cols);
+            var result = new Matrix<T>(Rows, op.Cols, multiplier, adder, Zero);
 
             var tasks = new List<Task>();
 
-            this.Sub(0, Rows, 0, Cols).MultiplyRecursiveVector(tasks,
+            Sub(0, Rows, 0, Cols).MultiplyRecursiveVector(tasks,
                                                 op.Sub(0, op.Rows, 0, op.Cols),
-                                                result.Sub(0, this.Rows, 0, op.Cols));
+                                                result.Sub(0, Rows, 0, op.Cols));
 
             Task.WaitAll(tasks.ToArray());
             watch.Stop();
@@ -130,50 +144,51 @@ namespace ConsoleApp1
             return result;
         }
 
-        public Matrix MultiplyRecursiveBox(Matrix op)
+        public Matrix<T> MultiplyRecursiveBox(Matrix<T> op, int rows = 2, int cols = 2)
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
 
-            if (this.Cols != op.Rows)
+            if (Cols != op.Rows)
             {
                 throw new System.Exception("Incompatible Matixes");
             }
 
-            var result = new Matrix(this.Rows, op.Cols);
+            var result = new Matrix<T>(Rows, op.Cols, multiplier, adder, Zero);
 
             var tasks = new List<Task>();
 
-            this.Sub(0, Rows, 0, Cols).MultiplyRecursiveBox(tasks,
+            Sub(0, Rows, 0, Cols).MultiplyRecursiveBox(tasks,
                                                 op.Sub(0, op.Rows, 0, op.Cols),
-                                                result.Sub(0, this.Rows, 0, op.Cols));
+                                                result.Sub(0, Rows, 0, op.Cols),
+                                                rows, cols);
 
             Task.WaitAll(tasks.ToArray());
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
-            Console.WriteLine($"MultiplyRecursiveBox tasks: {tasks.Count} time: {elapsedMs}");
+            Console.WriteLine($"MultiplyRecursiveBox({rows}x{cols}) tasks: {tasks.Count} time: {elapsedMs}");
 
             return result;
         }
     }
 
-    public class SubMatrix : IMatrix
+    public class SubMatrix<T> : IMatrix<T>
     {
-        private readonly Matrix matrix;
+        private readonly Matrix<T> matrix;
         private readonly int fromRow;
         private readonly int fromCol;
 
         public int Rows { get; }
         public int Cols { get; }
 
-        public int this[int r, int c]
+        public T this[int r, int c]
         {
             get
             {
-                return matrix.Buffer[((r + fromRow) * matrix.Cols) + c + fromCol];
+                return matrix.buffer[((r + fromRow) * matrix.Cols) + c + fromCol];
             }
             set
             {
-                matrix.Buffer[((r + fromRow) * matrix.Cols) + c + fromCol] = value;
+                matrix.buffer[((r + fromRow) * matrix.Cols) + c + fromCol] = value;
             }
         }
 
@@ -188,7 +203,7 @@ namespace ConsoleApp1
                     var row = new StringBuilder();
                     for (int c = fromCol; c < fromCol + Cols; c++)
                     {
-                        row.Append($"{matrix.Buffer[r * matrix.Cols + c]} ");
+                        row.Append($"{matrix.buffer[r * matrix.Cols + c]} ");
                     }
 
                     descr.Append($"{row} \r\n");
@@ -199,7 +214,7 @@ namespace ConsoleApp1
         }
 
 
-        public SubMatrix(Matrix matrix, int fromRow, int rows, int fromCol, int cols)
+        public SubMatrix(Matrix<T> matrix, int fromRow, int rows, int fromCol, int cols)
         {
             this.fromRow = fromRow;
             this.fromCol = fromCol;
@@ -208,155 +223,69 @@ namespace ConsoleApp1
             this.matrix = matrix;
         }
 
-        public SubMatrix Sub(int fromRow, int rows, int fromCol, int cols)
+        public SubMatrix<T> Sub(int fromRow, int rows, int fromCol, int cols)
         {
             //TODO GUARD from & to in the range
-            return new SubMatrix(this.matrix, fromRow, rows, fromCol, cols);
+            return new SubMatrix<T>(matrix, fromRow, rows, fromCol, cols);
         }
 
-        internal void MultiplyRecursiveVector(List<Task> tasks, SubMatrix op, SubMatrix result)
+        internal void MultiplyRecursiveVector(List<Task> tasks, SubMatrix<T> op, SubMatrix<T> result)
         {
             if (Rows > 1)
             {
                 var half = Rows / 2;
-                this.Sub(fromRow, half, fromCol, Cols).MultiplyRecursiveVector(tasks, op, result.Sub(result.fromRow, half, result.fromCol, result.Cols));
-                this.Sub(fromRow + half, Rows - half, fromCol, Cols).MultiplyRecursiveVector(tasks, op, result.Sub(result.fromRow + half, result.Rows - half, result.fromCol, result.Cols));
+                Sub(fromRow, half, fromCol, Cols).MultiplyRecursiveVector(tasks, op, result.Sub(result.fromRow, half, result.fromCol, result.Cols));
+                Sub(fromRow + half, Rows - half, fromCol, Cols).MultiplyRecursiveVector(tasks, op, result.Sub(result.fromRow + half, result.Rows - half, result.fromCol, result.Cols));
             }
             else if (op.Cols > 1)
             {
                 var half = op.Cols / 2;
-                this.MultiplyRecursiveVector(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol, half), result.Sub(result.fromRow, result.Rows, result.fromCol, half));
-                this.MultiplyRecursiveVector(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol + half, op.Cols - half), result.Sub(result.fromRow, result.Rows, result.fromCol + half, result.Cols - half));
+                MultiplyRecursiveVector(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol, half), result.Sub(result.fromRow, result.Rows, result.fromCol, half));
+                MultiplyRecursiveVector(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol + half, op.Cols - half), result.Sub(result.fromRow, result.Rows, result.fromCol + half, result.Cols - half));
             }
             else
             {
                 tasks.Add(Task.Factory.StartNew(() => {
-                    var t = 0;
+                    T t = matrix.Zero;
                     for (int i = 0; i < Cols; i++)
                     {
-                        t += this[0, i] * op[i, 0];
+                        t = matrix.adder(t, matrix.multiplier(this[0, i], op[i, 0])); //t += this[0, i] * op[i, 0];
                     }
                     result[0, 0] = t;
                 }));
             }
         }
 
-        internal void MultiplyRecursiveBox(List<Task> tasks, SubMatrix op, SubMatrix result)
+        internal void MultiplyRecursiveBox(List<Task> tasks, SubMatrix<T> op, SubMatrix<T> result, int rows, int cols)
         {
-            if (Rows > 2)
+            if (Rows > rows)
             {
                 var half = Rows / 2;
-                this.Sub(fromRow, half, fromCol, Cols).MultiplyRecursiveBox(tasks, op, result.Sub(result.fromRow, half, result.fromCol, result.Cols));
-                this.Sub(fromRow + half, Rows - half, fromCol, Cols).MultiplyRecursiveBox(tasks, op, result.Sub(result.fromRow + half, result.Rows - half, result.fromCol, result.Cols));
+                Sub(fromRow, half, fromCol, Cols).MultiplyRecursiveBox(tasks, op, result.Sub(result.fromRow, half, result.fromCol, result.Cols), rows, cols);
+                Sub(fromRow + half, Rows - half, fromCol, Cols).MultiplyRecursiveBox(tasks, op, result.Sub(result.fromRow + half, result.Rows - half, result.fromCol, result.Cols), rows, cols);
             }
-            else if (op.Cols > 2)
+            else if (op.Cols > cols)
             {
                 var half = op.Cols / 2;
-                this.MultiplyRecursiveBox(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol, half), result.Sub(result.fromRow, result.Rows, result.fromCol, half));
-                this.MultiplyRecursiveBox(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol + half, op.Cols - half), result.Sub(result.fromRow, result.Rows, result.fromCol + half, result.Cols - half));
+                MultiplyRecursiveBox(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol, half), result.Sub(result.fromRow, result.Rows, result.fromCol, half), rows, cols);
+                MultiplyRecursiveBox(tasks, op.Sub(op.fromRow, op.Rows, op.fromCol + half, op.Cols - half), result.Sub(result.fromRow, result.Rows, result.fromCol + half, result.Cols - half), rows, cols);
             }
             else
             {
                 tasks.Add(Task.Factory.StartNew(() => {
-                    for (int row = 0; row < this.Rows; row++)
+                    for (int row = 0; row < Rows; row++)
                     {
                         for (int col = 0; col < op.Cols; col++)
                         {
-                            result[row, col] = 0;
-                            for (int col2 = 0; col2 < this.Cols; col2++)
+                            result[row, col] = matrix.Zero;
+                            for (int col2 = 0; col2 < Cols; col2++)
                             {
-                                result[row, col] += this[row, col2] * op[col2, col];
+                                result[row, col] = matrix.adder(result[row, col], matrix.multiplier(this[row, col2], op[col2, col])); //result[row, col] += this[row, col2] * op[col2, col];
                             }
                         }
                     }
                 }));
             }
         }
-
     }
-
-
-    //// NO SUPPORT FOR INumeric or similar in C# Generic
-    //// https://stackoverflow.com/questions/32664/is-there-a-constraint-that-restricts-my-generic-method-to-numeric-types
-    //// like in C++ https://stackoverflow.com/questions/44848011/c-limit-template-type-to-numbers
-    //public class Matrix<T>
-    //    where T : INumeric<T> ????  ..... like  IComparable<T>, IEquatable<T>
-    //{
-    //    int Rows { get; }
-    //    int Cols { get; }
-
-    //    private readonly T[] Buffer;
-
-    //    public Matrix(int rows, int cols)
-    //    {
-    //        this.Rows = rows;
-    //        this.Cols = cols;
-    //        this.Buffer = new T[rows * cols];
-    //    }
-
-    //    public T this[int r, int c]
-    //    {
-    //        get
-    //        {
-    //            return Buffer[r * Cols + c];
-    //        }
-    //        set
-    //        {
-    //            Buffer[r * Cols + c] = value;
-    //        }
-    //    }
-
-    //    public void Randomize(Func<T> randomizer)
-    //    {
-    //        for (int r=0; r<Rows; r++)
-    //        {
-    //            for (int c=0; c<Cols; c++)
-    //            {
-    //                Buffer[r * Cols + c] = randomizer();
-    //            }
-    //        }
-    //    }
-
-    //    public string Description()
-    //    {
-    //        var descr = new StringBuilder();
-
-    //        for (int r=0; r<Rows; r++)
-    //        {
-    //            var row = new StringBuilder();
-    //            for (int c=0; c<Cols; c++)
-    //            {
-    //                row.Append($"{Buffer[r * Cols + c]} ");
-    //            }
-
-    //            descr.Append($"{row} \r\n");
-    //        }
-
-    //        return descr.ToString();
-    //    }
-
-    //    public Matrix<T> Multiply(Matrix<T> op, T zero)
-    //    {
-    //        if (this.Cols != op.Rows)
-    //        {
-    //            throw new System.Exception("Incompatible Matixes");
-    //        }
-
-    //        var c = new Matrix<T>(this.Rows, op.Cols);
-
-    //        for (int row=0; row<this.Rows; row++)
-    //        {
-    //            for (int col=0; col<op.Cols; col++)
-    //            {
-    //                c[row, col] = zero;
-    //                for (int col2 = 0; col2 < this.Cols; col2++)
-    //                {
-    //                    c[row, col] += this[row, col2] * op[col2, col];
-    //                }
-    //            }
-    //        }
-
-    //        return c;
-    //    }
-    //}
 }
